@@ -8,8 +8,7 @@ use Try::Tiny;
 our $VERSION = '0.000001';
 $VERSION = eval $VERSION;
 
-#XXX handle stdout/stderr between programs
-my @accessors = qw(status_file psgi listen socket starman_pid_file interval starman);
+my @accessors = qw(status_file psgi listen socket starman_pid interval starman);
 sub new {
   my $class = shift;
   my $args = shift;
@@ -77,16 +76,6 @@ sub do_refresh {
   }
 }
 
-sub starman_pid {
-  my $self = shift;
-  open my $fh, '<', $self->starman_pid_file
-    or die "can't read starman pid: $!";
-  my $pid = do { local $/; <$fh> };
-  close $fh;
-  chomp $pid;
-  return $pid;
-}
-
 sub _program {
   my ($self, @args) = @_;
   $SIG{USR1} = sub {
@@ -112,11 +101,16 @@ sub _program {
     'starman',
     ($self->listen ? ('--listen' => $self->listen) : ()),
     ($self->socket ? ('--listen' => $self->socket) : ()),
-    ($self->starman_pid ? ('--pid' => $self->starman_pid) : ()),
     @args,
     ($self->psgi || ()),
   );
 
+  my $start_worker = \&Server::Starter::_start_worker;
+  *Server::Starter::_start_worker = sub {
+    my $pid = $start_worker->(@_);
+    $self->starman_pid($pid);
+    return $pid;
+  };
   start_server(%opts, exec => \@exec);
 }
 
